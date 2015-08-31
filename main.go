@@ -36,6 +36,10 @@ const (
 	OpDiv
 	OpSet
 	OpRotate
+	OpDrain
+	OpFill
+	OpDrainTo
+	OpFillTo
 )
 
 func (this *µcore) Execute() {
@@ -92,6 +96,72 @@ func (this *µcore) Execute() {
 			this.r = cb
 			this.g = cr
 			this.b = cg
+		case OpDrain:
+			// drain the pixel out each generation
+			for this.g > 0 || this.b > 0 || this.r > 0 {
+				this.r = saturationDecrease(this.r-1, this.r)
+				this.g = saturationDecrease(this.g-1, this.g)
+				this.b = saturationDecrease(this.b-1, this.b)
+				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+			}
+			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
+			this.result <- pixel
+			this.result <- pixel
+			// once finished set the pixel to the r,g,b values in the instruction
+			this.r, this.g, this.b = r, g, b
+			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+		case OpDrainTo:
+			// drain the pixel out each generation
+			for this.g > g || this.b > b || this.r > r {
+				if this.r > r {
+					this.r = saturationDecrease(this.r-1, this.r)
+				}
+				if this.g > g {
+					this.g = saturationDecrease(this.g-1, this.g)
+				}
+				if this.b > b {
+					this.b = saturationDecrease(this.b-1, this.b)
+				}
+				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+			}
+			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
+			this.result <- pixel
+			this.result <- pixel
+			// once finished set the pixel to the r,g,b values in the instruction
+			this.r, this.g, this.b = r, g, b
+			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+		case OpFill:
+			for this.g < 255 || this.b < 255 || this.r < 255 {
+				this.r = saturationIncrease(this.r+1, this.r)
+				this.g = saturationIncrease(this.g+1, this.g)
+				this.b = saturationIncrease(this.b+1, this.b)
+				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+			}
+			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
+			this.result <- pixel
+			this.result <- pixel
+			// once finished set the pixel to the r,g,b values in the instruction
+			this.r, this.g, this.b = r, g, b
+			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+		case OpFillTo:
+			for this.g < g || this.b < b || this.r < r {
+				if this.r < r {
+					this.r = saturationIncrease(this.r+1, this.r)
+				}
+				if this.g < g {
+					this.g = saturationIncrease(this.g+1, this.g)
+				}
+				if this.b < b {
+					this.b = saturationIncrease(this.b+1, this.b)
+				}
+				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+			}
+			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
+			this.result <- pixel
+			this.result <- pixel
+			// once finished set the pixel to the r,g,b values in the instruction
+			this.r, this.g, this.b = r, g, b
+			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
 		default:
 		}
 		this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
