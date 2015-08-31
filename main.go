@@ -21,17 +21,80 @@ const (
 )
 
 type µcore struct {
-	index  int
-	memory Memory
-	result chan *unicornhat.Pixel
-	done   chan int
+	index   int
+	memory  Memory
+	result  chan *unicornhat.Pixel
+	done    chan int
+	r, g, b byte
 }
+
+const (
+	OpDelay = iota
+	OpAdd
+	OpSub
+	OpMul
+	OpDiv
+	OpSet
+	OpRotate
+)
 
 func (this *µcore) Execute() {
 	log.Printf("µcore %d: Walking through memory", this.index)
+	saturationIncrease := func(val, compare byte) byte {
+		if val < compare {
+			return 255
+		} else {
+			return val
+		}
+	}
+	saturationDecrease := func(val, compare byte) byte {
+		if val > compare {
+			return 0
+		} else {
+			return val
+		}
+	}
 	for i := 0; i < len(this.memory); i += 4 {
-		this.result <- unicornhat.NewPixel(this.memory[i+0], this.memory[i+1], this.memory[i+2])
-		MillisecondDelay(time.Duration(this.memory[i+3]))
+		r, g, b := this.memory[i+red], this.memory[i+green], this.memory[i+blue]
+		// check the control byte
+		c := this.memory[i+control]
+		switch c {
+		case OpDelay:
+			MillisecondDelay(time.Duration((r + g + b) % 128))
+		case OpAdd:
+			this.r = saturationIncrease(this.r+r, this.r)
+			this.g = saturationIncrease(this.g+g, this.g)
+			this.b = saturationIncrease(this.b+b, this.b)
+		case OpSub:
+			this.r = saturationDecrease(this.r-r, this.r)
+			this.g = saturationDecrease(this.g-g, this.g)
+			this.b = saturationDecrease(this.b-b, this.b)
+		case OpMul:
+			this.r *= r
+			this.b *= b
+			this.g *= g
+		case OpSet:
+			this.r = r
+			this.g = g
+			this.b = b
+		case OpDiv:
+			if r != 0 {
+				this.r /= r
+			}
+			if g != 0 {
+				this.g /= g
+			}
+			if b != 0 {
+				this.b /= b
+			}
+		case OpRotate:
+			cr, cg, cb := this.r, this.g, this.b
+			this.r = cb
+			this.g = cr
+			this.b = cg
+		default:
+		}
+		this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
 	}
 	log.Printf("µcore %d: done walking", this.index)
 	this.done <- 0
@@ -46,6 +109,13 @@ func New(index int, memory Memory) *µcore {
 	c.result = make(chan *unicornhat.Pixel)
 	return &c
 }
+
+const (
+	red = iota
+	green
+	blue
+	control
+)
 
 func main() {
 	var cpus []*µcore
@@ -62,8 +132,14 @@ func main() {
 	cpus = make([]*µcore, NumCpus)
 	memory = make(Memory, MemSize)
 	log.Print("Randomizing memory")
-	for i := 0; i < len(memory); i++ {
-		memory[i] = byte(rand.Uint32())
+	fn := func(v int) byte {
+		return byte(v + rand.Int())
+	}
+	for i, j := 0, 0; i < len(memory); i, j = i+4, j+1 {
+		memory[i+red] = fn(j)
+		memory[i+green] = fn(j)
+		memory[i+blue] = fn(j)
+		memory[i+control] = fn(j)
 	}
 	log.Print("Done randomizing memory")
 	upperHalf := memory
@@ -94,7 +170,7 @@ func main() {
 			}
 		}
 		unicornhat.Show()
-		MillisecondDelay(17)
+		MillisecondDelay(33)
 	}
 }
 func MillisecondDelay(msec time.Duration) {
