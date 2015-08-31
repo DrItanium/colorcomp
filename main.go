@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/DrItanium/unicornhat"
 	"log"
@@ -8,6 +9,9 @@ import (
 	"runtime"
 	"time"
 )
+
+var msecdelay = flag.Uint("msecdelay", 33, "Millisecond delay between unicornhat updates")
+var debug = flag.Bool("debug", false, "Enable debug logging")
 
 type Memory []byte
 type Word uint32
@@ -38,12 +42,10 @@ const (
 	OpRotate
 	OpDrain
 	OpFill
-	OpDrainTo
-	OpFillTo
 )
 
 func (this *µcore) Execute() {
-	log.Printf("µcore %d: Walking through memory", this.index)
+	logPrint(fmt.Sprintf("µcore %d: Walking through memory", this.index))
 	saturationIncrease := func(val, compare byte) byte {
 		if val < compare {
 			return 255
@@ -98,20 +100,6 @@ func (this *µcore) Execute() {
 			this.b = cg
 		case OpDrain:
 			// drain the pixel out each generation
-			for this.g > 0 || this.b > 0 || this.r > 0 {
-				this.r = saturationDecrease(this.r-1, this.r)
-				this.g = saturationDecrease(this.g-1, this.g)
-				this.b = saturationDecrease(this.b-1, this.b)
-				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
-			}
-			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
-			this.result <- pixel
-			this.result <- pixel
-			// once finished set the pixel to the r,g,b values in the instruction
-			this.r, this.g, this.b = r, g, b
-			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
-		case OpDrainTo:
-			// drain the pixel out each generation
 			for this.g > g || this.b > b || this.r > r {
 				if this.r > r {
 					this.r = saturationDecrease(this.r-1, this.r)
@@ -127,23 +115,7 @@ func (this *µcore) Execute() {
 			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
 			this.result <- pixel
 			this.result <- pixel
-			// once finished set the pixel to the r,g,b values in the instruction
-			this.r, this.g, this.b = r, g, b
-			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
 		case OpFill:
-			for this.g < 255 || this.b < 255 || this.r < 255 {
-				this.r = saturationIncrease(this.r+1, this.r)
-				this.g = saturationIncrease(this.g+1, this.g)
-				this.b = saturationIncrease(this.b+1, this.b)
-				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
-			}
-			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
-			this.result <- pixel
-			this.result <- pixel
-			// once finished set the pixel to the r,g,b values in the instruction
-			this.r, this.g, this.b = r, g, b
-			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
-		case OpFillTo:
 			for this.g < g || this.b < b || this.r < r {
 				if this.r < r {
 					this.r = saturationIncrease(this.r+1, this.r)
@@ -159,14 +131,11 @@ func (this *µcore) Execute() {
 			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
 			this.result <- pixel
 			this.result <- pixel
-			// once finished set the pixel to the r,g,b values in the instruction
-			this.r, this.g, this.b = r, g, b
-			this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
 		default:
 		}
 		this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
 	}
-	log.Printf("µcore %d: done walking", this.index)
+	logPrint(fmt.Sprintf("µcore %d: done walking", this.index))
 	this.done <- 0
 	close(this.done)
 }
@@ -187,7 +156,14 @@ const (
 	control
 )
 
+func logPrint(msg string) {
+	if *debug {
+		log.Print(msg)
+	}
+}
 func main() {
+	flag.Parse()
+	delay := time.Duration(*msecdelay)
 	var cpus []*µcore
 	var memory Memory
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -201,7 +177,7 @@ func main() {
 	unicornhat.Show()
 	cpus = make([]*µcore, NumCpus)
 	memory = make(Memory, MemSize)
-	log.Print("Randomizing memory")
+	logPrint("Randomizing memory")
 	fn := func(v int) byte {
 		return byte(v + rand.Int())
 	}
@@ -211,7 +187,7 @@ func main() {
 		memory[i+blue] = fn(j)
 		memory[i+control] = fn(j)
 	}
-	log.Print("Done randomizing memory")
+	logPrint("Done randomizing memory")
 	upperHalf := memory
 	for i := 0; i < 64; i++ {
 		targetMem := upperHalf[:µcoreSize]
@@ -240,7 +216,7 @@ func main() {
 			}
 		}
 		unicornhat.Show()
-		MillisecondDelay(33)
+		MillisecondDelay(delay)
 	}
 }
 func MillisecondDelay(msec time.Duration) {
