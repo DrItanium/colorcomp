@@ -12,7 +12,7 @@ import (
 
 var msecdelay = flag.Uint("msecdelay", 33, "Millisecond delay between unicornhat updates")
 var debug = flag.Bool("debug", false, "Enable debug logging")
-var xmas = flag.Bool("xmax", false, "Enable xmas mode")
+var xmas = flag.Bool("xmas", false, "Enable xmas mode")
 
 type Memory []byte
 type Word uint32
