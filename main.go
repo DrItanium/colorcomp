@@ -12,6 +12,7 @@ import (
 
 var msecdelay = flag.Uint("msecdelay", 33, "Millisecond delay between unicornhat updates")
 var debug = flag.Bool("debug", false, "Enable debug logging")
+var xmas = flag.Bool("xmax", false, "Enable xmas mode")
 
 type Memory []byte
 type Word uint32
@@ -182,9 +183,20 @@ func main() {
 		return byte(v + rand.Int())
 	}
 	for i, j := 0, 0; i < len(memory); i, j = i+4, j+1 {
-		memory[i+red] = fn(j)
-		memory[i+green] = fn(j)
-		memory[i+blue] = fn(j)
+		if *xmas {
+			if i%2 == 0 {
+				memory[i+red] = fn(j)
+				memory[i+green] = 0
+			} else {
+				memory[i+red] = 0
+				memory[i+green] = fn(j)
+			}
+			memory[i+blue] = 0
+		} else {
+			memory[i+red] = fn(j)
+			memory[i+green] = fn(j)
+			memory[i+blue] = fn(j)
+		}
 		memory[i+control] = fn(j)
 	}
 	logPrint("Done randomizing memory")
