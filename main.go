@@ -13,6 +13,8 @@ import (
 var msecdelay = flag.Uint("msecdelay", 33, "Millisecond delay between unicornhat updates")
 var debug = flag.Bool("debug", false, "Enable debug logging")
 var xmas = flag.Bool("xmas", false, "Enable xmas mode")
+var gscale = flag.Bool("greyscale", false, "Enable greyscale mode")
+var drainfill = flag.Bool("drainfill", false, "Only use drain and fill operations!")
 
 type Memory []byte
 type Word uint32
@@ -45,60 +47,77 @@ const (
 	OpFill
 )
 
+func saturationIncrease(val, compare byte) byte {
+	if val < compare {
+		return 255
+	} else {
+		return val
+	}
+}
+
+func saturationDecrease(val, compare byte) byte {
+	if val > compare {
+		return 0
+	} else {
+		return val
+	}
+}
+func (this *µcore) delay(r, g, b byte) {
+	MillisecondDelay(time.Duration((r + g + b) % 128))
+}
+func (this *µcore) add(r, g, b byte, fn func(byte, byte) byte) {
+	this.r = fn(this.r+r, this.r)
+	this.g = fn(this.g+g, this.g)
+	this.b = fn(this.b+b, this.b)
+}
+
+func (this *µcore) sub(r, g, b byte, fn func(byte, byte) byte) {
+	this.r = fn(this.r-r, this.r)
+	this.g = fn(this.g-g, this.g)
+	this.b = fn(this.b-b, this.b)
+}
+func (this *µcore) mul(r, g, b byte) {
+	this.r *= r
+	this.g *= g
+	this.b *= b
+}
+func (this *µcore) set(r, g, b byte) {
+	this.r = r
+	this.g = g
+	this.b = b
+}
+func tryDiv(val *byte, divisor byte) {
+	if divisor != 0 {
+		*val /= divisor
+	}
+}
+func (this *µcore) div(r, g, b byte) {
+	tryDiv(&this.r, r)
+	tryDiv(&this.g, g)
+	tryDiv(&this.b, b)
+}
+
 func (this *µcore) Execute() {
 	logPrint(fmt.Sprintf("µcore %d: Walking through memory", this.index))
-	saturationIncrease := func(val, compare byte) byte {
-		if val < compare {
-			return 255
-		} else {
-			return val
-		}
-	}
-	saturationDecrease := func(val, compare byte) byte {
-		if val > compare {
-			return 0
-		} else {
-			return val
-		}
-	}
 	for i := 0; i < len(this.memory); i += 4 {
 		r, g, b := this.memory[i+red], this.memory[i+green], this.memory[i+blue]
 		// check the control byte
 		c := this.memory[i+control]
 		switch c {
 		case OpDelay:
-			MillisecondDelay(time.Duration((r + g + b) % 128))
+			this.delay(r, g, b)
 		case OpAdd:
-			this.r = saturationIncrease(this.r+r, this.r)
-			this.g = saturationIncrease(this.g+g, this.g)
-			this.b = saturationIncrease(this.b+b, this.b)
+			this.add(r, g, b, saturationIncrease)
 		case OpSub:
-			this.r = saturationDecrease(this.r-r, this.r)
-			this.g = saturationDecrease(this.g-g, this.g)
-			this.b = saturationDecrease(this.b-b, this.b)
+			this.sub(r, g, b, saturationDecrease)
 		case OpMul:
-			this.r *= r
-			this.b *= b
-			this.g *= g
+			this.mul(r, g, b)
 		case OpSet:
-			this.r = r
-			this.g = g
-			this.b = b
+			this.set(r, g, b)
 		case OpDiv:
-			if r != 0 {
-				this.r /= r
-			}
-			if g != 0 {
-				this.g /= g
-			}
-			if b != 0 {
-				this.b /= b
-			}
+			this.div(r, g, b)
 		case OpRotate:
-			cr, cg, cb := this.r, this.g, this.b
-			this.r = cb
-			this.g = cr
-			this.b = cg
+			this.set(this.b, this.r, this.g)
 		case OpDrain:
 			// drain the pixel out each generation
 			for this.g > g || this.b > b || this.r > r {
@@ -179,25 +198,35 @@ func main() {
 	cpus = make([]*µcore, NumCpus)
 	memory = make(Memory, MemSize)
 	logPrint("Randomizing memory")
-	fn := func(v int) byte {
-		return byte(v + rand.Int())
-	}
 	for i, j := 0, 0; i < len(memory); i, j = i+4, j+1 {
 		if *xmas {
-			if i%2 == 0 {
-				memory[i+red] = fn(j)
+			if rand.Int()%2 == 0 {
+				memory[i+red] = byte(j + rand.Int())
 				memory[i+green] = 0
 			} else {
 				memory[i+red] = 0
-				memory[i+green] = fn(j)
+				memory[i+green] = byte(j + rand.Int())
 			}
 			memory[i+blue] = 0
+		} else if *gscale {
+			intensity := byte(j * rand.Int())
+			memory[i+red] = intensity
+			memory[i+green] = intensity
+			memory[i+blue] = intensity
 		} else {
-			memory[i+red] = fn(j)
-			memory[i+green] = fn(j)
-			memory[i+blue] = fn(j)
+			memory[i+red] = byte(j + rand.Int())
+			memory[i+green] = byte(j + rand.Int())
+			memory[i+blue] = byte(j + rand.Int())
 		}
-		memory[i+control] = fn(j)
+		if *drainfill {
+			if val := byte(j * rand.Int()); val%2 == 0 {
+				memory[i+control] = OpFill
+			} else {
+				memory[i+control] = OpDrain
+			}
+		} else {
+			memory[i+control] = byte(j + rand.Int())
+		}
 	}
 	logPrint("Done randomizing memory")
 	upperHalf := memory
@@ -214,17 +243,17 @@ func main() {
 			break
 		}
 		for i := 0; i < 64; i++ {
-			c := cpus[i]
-			if c == nil {
+			if c := cpus[i]; c == nil {
 				continue
-			}
-			select {
-			case value := <-c.result:
-				unicornhat.SetPixelColor(c.index, value.R, value.G, value.B)
-			case <-c.done:
-				count++
-				cpus[i] = nil
-			default:
+			} else {
+				select {
+				case value := <-c.result:
+					unicornhat.SetPixelColor(c.index, value.R, value.G, value.B)
+				case <-c.done:
+					count++
+					cpus[i] = nil
+				default:
+				}
 			}
 		}
 		unicornhat.Show()
