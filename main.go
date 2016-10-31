@@ -16,6 +16,7 @@ var xmas = flag.Bool("xmas", false, "Enable xmas mode")
 var gscale = flag.Bool("greyscale", false, "Enable greyscale mode")
 var drainfill = flag.Bool("drainfill", false, "Only use drain and fill operations!")
 var purple = flag.Bool("purple", false, "Only use purple tones")
+var blueOnly = flag.Bool("blueOnly", false, "Only use blue tones")
 
 type Memory []byte
 type Word uint32
@@ -218,6 +219,8 @@ func main() {
 			intensity := byte(j + rand.Int())
 			memory[i+red] = intensity
 			memory[i+blue] = intensity
+		} else if *blueOnly {
+			memory[i+blue] = byte(j + rand.Int())
 		} else {
 			memory[i+red] = byte(j + rand.Int())
 			memory[i+green] = byte(j + rand.Int())
