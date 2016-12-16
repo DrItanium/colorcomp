@@ -70,23 +70,31 @@ func (this *µcore) delay(r, g, b byte) {
 func (this *µcore) add(r, g, b byte, fn func(byte, byte) byte) {
 	this.r = fn(this.r+r, this.r)
 	this.g = fn(this.g+g, this.g)
-	this.b = fn(this.b+b, this.b)
+	if !*xmas {
+		this.b = fn(this.b+b, this.b)
+	}
 }
 
 func (this *µcore) sub(r, g, b byte, fn func(byte, byte) byte) {
 	this.r = fn(this.r-r, this.r)
 	this.g = fn(this.g-g, this.g)
-	this.b = fn(this.b-b, this.b)
+	if !*xmas {
+		this.b = fn(this.b-b, this.b)
+	}
 }
 func (this *µcore) mul(r, g, b byte) {
 	this.r *= r
 	this.g *= g
-	this.b *= b
+	if !*xmas {
+		this.b *= b
+	}
 }
 func (this *µcore) set(r, g, b byte) {
 	this.r = r
 	this.g = g
-	this.b = b
+	if !*xmas {
+		this.b = b
+	}
 }
 func tryDiv(val *byte, divisor byte) {
 	if divisor != 0 {
@@ -96,7 +104,9 @@ func tryDiv(val *byte, divisor byte) {
 func (this *µcore) div(r, g, b byte) {
 	tryDiv(&this.r, r)
 	tryDiv(&this.g, g)
-	tryDiv(&this.b, b)
+	if !*xmas {
+		tryDiv(&this.b, b)
+	}
 }
 
 func (this *µcore) Execute() {
@@ -105,6 +115,27 @@ func (this *µcore) Execute() {
 		r, g, b := this.memory[i+red], this.memory[i+green], this.memory[i+blue]
 		// check the control byte
 		c := this.memory[i+control]
+		useRedOnly := *xmas && (r > g); // either red or green
+		transformPixel := func(r, g, b byte) (byte, byte, byte) {
+			var blue byte
+			var green byte
+			var red byte
+			if *xmas {
+				blue = 0
+				green = 0
+				red = 0
+				if useRedOnly {
+					red = r
+				} else {
+					green = g
+				}
+			} else {
+				red = r
+				green = g
+				blue = b 
+			}
+			return red, green, blue
+		}
 		switch c {
 		case OpDelay:
 			this.delay(r, g, b)
@@ -119,7 +150,11 @@ func (this *µcore) Execute() {
 		case OpDiv:
 			this.div(r, g, b)
 		case OpRotate:
-			this.set(this.b, this.r, this.g)
+			if *xmas {
+				this.set(this.g, this.r, this.b)
+			} else {
+				this.set(this.b, this.r, this.g)
+			}
 		case OpDrain:
 			// drain the pixel out each generation
 			for this.g > g || this.b > b || this.r > r {
@@ -132,9 +167,11 @@ func (this *µcore) Execute() {
 				if this.b > b {
 					this.b = saturationDecrease(this.b-1, this.b)
 				}
-				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+				red, green, blue := transformPixel(this.r, this.g, this.b)
+				this.result <- unicornhat.NewPixel(red, green, blue)
 			}
-			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
+			red, green, blue := transformPixel(this.r, this.g, this.b)
+			pixel := unicornhat.NewPixel(red, green, blue)
 			this.result <- pixel
 			this.result <- pixel
 		case OpFill:
@@ -148,14 +185,17 @@ func (this *µcore) Execute() {
 				if this.b < b {
 					this.b = saturationIncrease(this.b+1, this.b)
 				}
-				this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+				red, green, blue := transformPixel(this.r, this.g, this.b)
+				this.result <- unicornhat.NewPixel(red, green, blue)
 			}
-			pixel := unicornhat.NewPixel(this.r, this.g, this.b)
+			red, green, blue := transformPixel(this.r, this.g, this.b)
+			pixel := unicornhat.NewPixel(red, green, blue)
 			this.result <- pixel
 			this.result <- pixel
 		default:
 		}
-		this.result <- unicornhat.NewPixel(this.r, this.g, this.b)
+		red, green, blue := transformPixel(this.r, this.g, this.b)
+		this.result <- unicornhat.NewPixel(red, green, blue)
 	}
 	logPrint(fmt.Sprintf("µcore %d: done walking", this.index))
 	this.done <- 0
@@ -201,15 +241,17 @@ func main() {
 	memory = make(Memory, MemSize)
 	logPrint("Randomizing memory")
 	for i, j := 0, 0; i < len(memory); i, j = i+4, j+1 {
+		memory[i+red] = 0
+		memory[i+blue] = 0
+		memory[i+green] = 0
 		if *xmas {
+			offset := red
 			if rand.Int()%2 == 0 {
-				memory[i+red] = byte(j + rand.Int())
-				memory[i+green] = 0
+				offset = red
 			} else {
-				memory[i+red] = 0
-				memory[i+green] = byte(j + rand.Int())
+				offset = green
 			}
-			memory[i+blue] = 0
+			memory[i+offset] = byte(j+rand.Int())
 		} else if *gscale {
 			intensity := byte(j * rand.Int())
 			memory[i+red] = intensity
@@ -235,6 +277,7 @@ func main() {
 		} else {
 			memory[i+control] = byte(j + rand.Int())
 		}
+		//logPrint(fmt.Sprintf("@%d = {%d, %d, %d}", i, memory[i+red], memory[i+green], memory[i+blue]))
 	}
 	logPrint("Done randomizing memory")
 	upperHalf := memory
