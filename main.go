@@ -115,7 +115,8 @@ func (this *µcore) Execute() {
 		r, g, b := this.memory[i+red], this.memory[i+green], this.memory[i+blue]
 		// check the control byte
 		c := this.memory[i+control]
-		useRedOnly := *xmas && (r > g); // either red or green
+		//useRedOnly := *xmas && ((r > g) || (rand.Int()%2 == 0)); // either red or green
+		useRedOnly := *xmas && (r > g)
 		transformPixel := func(r, g, b byte) (byte, byte, byte) {
 			var blue byte
 			var green byte
@@ -167,6 +168,7 @@ func (this *µcore) Execute() {
 				if this.b > b {
 					this.b = saturationDecrease(this.b-1, this.b)
 				}
+				//TODO: modify this to handle the different set of 
 				red, green, blue := transformPixel(this.r, this.g, this.b)
 				this.result <- unicornhat.NewPixel(red, green, blue)
 			}
